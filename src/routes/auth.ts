@@ -8,8 +8,8 @@ const router = Router();
 // Register
 router.post('/register', async (req, res) => {
   try {
-    const { username, email, password } = req.body;
-    const user = new User({ username, email, password });    
+    const { username, email, password, role } = req.body;
+    const user = new User({ username, email, password, role });    
     await user.save();
     
     const token = jwt.sign(
