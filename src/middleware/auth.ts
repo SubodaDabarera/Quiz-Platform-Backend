@@ -15,6 +15,7 @@ export const auth = async (req: Request, res: Response, next: NextFunction) => {
     const user = await User.findById(decoded.userId);
     
     if (!user) throw new Error('User not found');
+    //@ts-ignore
     req.user = user;
     next();
   } catch (error) {
@@ -24,6 +25,7 @@ export const auth = async (req: Request, res: Response, next: NextFunction) => {
 
 export const roles = (...allowedRoles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
+    //@ts-ignore
     if (!allowedRoles.includes(req.user.role)) {
       return res.status(403).json({ message: 'Access denied' });
     }

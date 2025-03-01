@@ -2,7 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import { Server } from 'socket.io';
 import http from 'http';
-import { initializeSocket } from './controllers/socket';
+import router from './routes/auth';
+//import { initializeSocket } from './controllers/socket';
 
 const app = express();
 const server = http.createServer(app);
@@ -11,6 +12,8 @@ const server = http.createServer(app);
 app.use(cors());
 app.use(express.json());
 
+app.use('/api', router)
+
 // Initialize Socket.IO
 const io = new Server(server, {
   cors: {
@@ -18,6 +21,6 @@ const io = new Server(server, {
     methods: ['GET', 'POST']
   }
 });
-initializeSocket(io);
+//initializeSocket(io);
 
 export { app, server };
