@@ -49,7 +49,7 @@ export const initializeSocket = (io: Server) => {
       }
     });
 
-    // Answer submission
+    // Update answer handling to sort players
     socket.on('submitAnswer', (quizId: string, answer: string) => {
       const quizState = activeQuizzes.get(quizId);
       if (!quizState) return;
@@ -59,7 +59,9 @@ export const initializeSocket = (io: Server) => {
 
       if (player && answer === question.correctAnswer) {
         player.score += 10;
-        io.to(quizId).emit('scoreUpdate', quizState.players);
+        // Sort players before emitting
+        const sortedPlayers = [...quizState.players].sort((a, b) => b.score - a.score);
+        io.to(quizId).emit('scoreUpdate', sortedPlayers);
       }
     });
 
@@ -79,6 +81,13 @@ const startQuestionTimer = async(io: Server, quizId: string, quizState: ActiveQu
   const question = quizState.quiz.questions[quizState.currentQuestion];
   
   if (quizState.timer) clearTimeout(quizState.timer);
+
+  // Send full question data to frontend
+  io.to(quizId).emit('questionUpdate', {
+    text: question.text,
+    options: question.options,
+    timeLimit: question.timeLimit
+  });
   
   quizState.timer = setTimeout(() => {
     quizState.currentQuestion++;
@@ -86,8 +95,8 @@ const startQuestionTimer = async(io: Server, quizId: string, quizState: ActiveQu
       io.to(quizId).emit('quizEnd', quizState.players);
       activeQuizzes.delete(quizId);
     } else {
-      io.to(quizId).emit('questionUpdate', quizState.quiz.questions[quizState.currentQuestion]);
       startQuestionTimer(io, quizId, quizState);
     }
   }, question.timeLimit * 1000);
 };
+
