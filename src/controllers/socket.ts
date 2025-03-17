@@ -1,5 +1,5 @@
-import { Server, Socket } from 'socket.io';
-import Quiz, { IQuiz } from '../models/Quiz';
+import { Server, Socket } from "socket.io";
+import Quiz, { IQuiz } from "../models/Quiz";
 
 interface Player {
   socketId: string;
@@ -8,95 +8,126 @@ interface Player {
 }
 
 interface ActiveQuiz {
-    quiz: IQuiz;
+  quiz: IQuiz;
   players: Player[];
   currentQuestion: number;
   timer?: NodeJS.Timeout;
+  questionStartTime?: number;
+  started: boolean;
 }
 
 const activeQuizzes = new Map<string, ActiveQuiz>();
 
 export const initializeSocket = (io: Server) => {
-  io.on('connection', (socket) => {
+  io.on("connection", (socket) => {
     console.log(`Socket connected: ${socket.id}`);
 
+    // Add new event handler for starting quiz
+    socket.on("startQuiz", (quizId: string) => {
+      const quizState = activeQuizzes.get(quizId);
+      if (!quizState || quizState.started) return;
+
+      quizState.started = true;
+      startQuestionTimer(io, quizId, quizState);
+    });
+
     // Join quiz room
-    socket.on('joinQuiz', async (quizId: string, username: string) => {
+    socket.on("joinQuiz", async (quizId: string, username: string) => {
       try {
         const quiz = await Quiz.findById(quizId);
-        if (!quiz) return socket.emit('error', 'Quiz not found');
+        if (!quiz) return socket.emit("error", "Quiz not found");
 
-        // Initialize or update active quiz
         const player: Player = { socketId: socket.id, username, score: 0 };
-        const quizState = activeQuizzes.get(quizId) || {
-          quiz,
-          players: [player],
-          currentQuestion: 0
-        };
+        let quizState = activeQuizzes.get(quizId);
 
-        if (!activeQuizzes.has(quizId)) {
-          activeQuizzes.set(quizId, quizState);
-        } else {
+        if (quizState) {
           quizState.players.push(player);
+        } else {
+          quizState = {
+            quiz,
+            players: [player],
+            currentQuestion: 0,
+            started: false, // Initialize as not started
+          };
+          activeQuizzes.set(quizId, quizState);
         }
 
-        // Join room and broadcast updates
         socket.join(quizId);
-        io.to(quizId).emit('playersUpdate', quizState.players);
-        startQuestionTimer(io, quizId, quizState);
+        io.to(quizId).emit("playersUpdate", quizState.players);
+
+        // Send current state to new player
+        if (quizState.started) {
+          const question = quizState.quiz.questions[quizState.currentQuestion];
+          const elapsed = Date.now() - (quizState.questionStartTime || 0);
+          const remaining = question.timeLimit - Math.floor(elapsed / 1000);
+
+          socket.emit("questionUpdate", {
+            text: question.text,
+            options: question.options,
+            timeLimit: Math.max(0, remaining),
+          });
+        }
       } catch (error) {
-        socket.emit('error', 'Failed to join quiz');
+        socket.emit("error", "Failed to join quiz");
       }
     });
 
     // Update answer handling to sort players
-    socket.on('submitAnswer', (quizId: string, answer: string) => {
+    socket.on("submitAnswer", (quizId: string, answer: string) => {
       const quizState = activeQuizzes.get(quizId);
       if (!quizState) return;
 
       const question = quizState.quiz.questions[quizState.currentQuestion];
-      const player = quizState.players.find(p => p.socketId === socket.id);
+      const player = quizState.players.find((p) => p.socketId === socket.id);
 
       if (player && answer === question.correctAnswer) {
         player.score += 10;
         // Sort players before emitting
-        const sortedPlayers = [...quizState.players].sort((a, b) => b.score - a.score);
-        io.to(quizId).emit('scoreUpdate', sortedPlayers);
+        const sortedPlayers = [...quizState.players].sort(
+          (a, b) => b.score - a.score
+        );
+        io.to(quizId).emit("scoreUpdate", sortedPlayers);
       }
     });
 
     // Handle disconnection
-    socket.on('disconnect', () => {
+    socket.on("disconnect", () => {
       activeQuizzes.forEach((quizState, quizId) => {
-        quizState.players = quizState.players.filter(p => p.socketId !== socket.id);
+        quizState.players = quizState.players.filter(
+          (p) => p.socketId !== socket.id
+        );
         if (quizState.players.length === 0) activeQuizzes.delete(quizId);
-        io.to(quizId).emit('playersUpdate', quizState.players);
+        io.to(quizId).emit("playersUpdate", quizState.players);
       });
     });
   });
 };
 
 // Helper: Start timer for current question
-const startQuestionTimer = async(io: Server, quizId: string, quizState: ActiveQuiz) => {
+const startQuestionTimer = async (
+  io: Server,
+  quizId: string,
+  quizState: ActiveQuiz
+) => {
   const question = quizState.quiz.questions[quizState.currentQuestion];
-  
+
   if (quizState.timer) clearTimeout(quizState.timer);
+  quizState.questionStartTime = Date.now();
 
   // Send full question data to frontend
-  io.to(quizId).emit('questionUpdate', {
+  io.to(quizId).emit("questionUpdate", {
     text: question.text,
     options: question.options,
-    timeLimit: question.timeLimit
+    timeLimit: question.timeLimit,
   });
-  
+
   quizState.timer = setTimeout(() => {
     quizState.currentQuestion++;
     if (quizState.currentQuestion >= quizState.quiz.questions.length) {
-      io.to(quizId).emit('quizEnd', quizState.players);
+      io.to(quizId).emit("quizEnd", quizState.players);
       activeQuizzes.delete(quizId);
     } else {
       startQuestionTimer(io, quizId, quizState);
     }
   }, question.timeLimit * 1000);
 };
-
