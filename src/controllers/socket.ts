@@ -65,6 +65,7 @@ export const initializeSocket = (io: Server) => {
             text: question.text,
             options: question.options,
             timeLimit: Math.max(0, remaining),
+            isLastQuestion: true
           });
         }
       } catch (error) {
@@ -114,11 +115,15 @@ const startQuestionTimer = async (
   if (quizState.timer) clearTimeout(quizState.timer);
   quizState.questionStartTime = Date.now();
 
+  const numOfQuestions = quizState.quiz.questions.length
+  const currentQuestion = quizState.currentQuestion + 1
+  
   // Send full question data to frontend
   io.to(quizId).emit("questionUpdate", {
     text: question.text,
     options: question.options,
     timeLimit: question.timeLimit,
+    isLastQuestion : currentQuestion >= numOfQuestions
   });
 
   quizState.timer = setTimeout(() => {
