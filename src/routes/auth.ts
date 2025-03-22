@@ -17,8 +17,7 @@ router.post('/register', async (req, res) => {
       process.env.JWT_SECRET!,
       { expiresIn: '1d' }
     );
-
-    res.status(201).json({ token });
+    res.status(201).json({token, role: user.role, username: user.username})
   } catch (error) {
     console.log(error);
     res.status(400).json({ message: 'Registration failed' });
